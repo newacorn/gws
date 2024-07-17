@@ -57,6 +57,7 @@ func (c *Conn) readControl() error {
 	}
 }
 
+//goland:noinspection GoDfaConstantCondition
 func (c *Conn) readMessage() error {
 	contentLength, err := c.fh.Parse(c.br)
 	if err != nil {
@@ -85,6 +86,7 @@ func (c *Conn) readMessage() error {
 	// read control frame
 	var opcode = c.fh.GetOpcode()
 	var compressed = c.pd.Enabled && c.fh.GetRSV1()
+
 	if !opcode.isDataFrame() {
 		return c.readControl()
 	}
@@ -107,6 +109,7 @@ func (c *Conn) readMessage() error {
 	}
 
 	if fin && opcode != OpcodeContinuation {
+		// 非continuation帧
 		*(*[]byte)(unsafe.Pointer(buf)) = p
 		if !compressed {
 			closer.Data = nil
@@ -115,6 +118,7 @@ func (c *Conn) readMessage() error {
 	}
 
 	if !fin && opcode != OpcodeContinuation {
+		// continuation的第一帧
 		c.continuationFrame.initialized = true
 		c.continuationFrame.compressed = compressed
 		c.continuationFrame.opcode = opcode
@@ -124,15 +128,16 @@ func (c *Conn) readMessage() error {
 	if !c.continuationFrame.initialized {
 		return internal.CloseProtocolError
 	}
-
+	// 处理continuation的第一、二和三帧
 	c.continuationFrame.buffer.Write(p)
 	if c.continuationFrame.buffer.Len() > c.config.ReadMaxPayloadSize {
 		return internal.CloseMessageTooLarge
 	}
 	if !fin {
+		// 处理continuation的第一、二帧
 		return nil
 	}
-
+	// 处理continuation的第三帧
 	msg := &Message{Opcode: c.continuationFrame.opcode, Data: c.continuationFrame.buffer, compressed: c.continuationFrame.compressed}
 	c.continuationFrame.reset()
 	return c.emitMessage(msg)

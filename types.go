@@ -42,6 +42,7 @@ func (c *CloseError) Error() string {
 
 var (
 	errEmpty = errors.New("")
+	errEmpty            = errors.New("")
 
 	// ErrUnauthorized 未通过鉴权认证
 	// Failure to pass forensic authentication
@@ -82,6 +83,26 @@ type Event interface {
 	// 如果是前者, err可以断言为*CloseError
 	// Received a close frame from the other end of the network connection, or disconnected voluntarily due to an error in the IO process
 	// In the former case, err can be asserted as *CloseError
+	//
+	// Conn.emitError方法调用之后才会调用此方法。
+	// Conn.emitError方法内部总是会发送关闭帧和关闭底层net.Conn，
+	// 所以不能对socket.conn做任何操作。
+	// 并将所有其它StatusCode当做 internal.CloseNormalClosure 来调用此方法。
+	// 所以调用此方法的err参数只会是：internal.CloseNormalClosure
+	// 或者具体非websocket StatusCode错误
+	//
+	//
+	// readControl中如果遇到了错误或者收到了关闭帧，会使用下面的类型来调用此函数。
+	// type CloseError struct {
+	//	Code   uint16
+	//	Reason []byte
+	// }
+	// realCode = binary.BigEndian.Uint16(b[0:])
+	//		switch realCode {
+	//		case 1004, 1005, 1006, 1014, 1015:
+	// CloseError 的code字段是1004, 1005, 1006, 1014, 1015等这些数字而非
+	// StatusCode 类型。
+	// Reason字段存储的是浏览器发送的关闭原因。
 	OnClose(socket *Conn, err error)
 
 	// OnPing 心跳探测事件
@@ -95,6 +116,8 @@ type Event interface {
 	// OnMessage 消息事件
 	// 如果开启了ParallelEnabled, 会并行地调用OnMessage; 没有做recover处理.
 	// If ParallelEnabled is enabled, OnMessage is called in parallel. No recover is done.
+	//
+	// 需调用 Message.Close() 释放 Message.Data 内存
 	OnMessage(socket *Conn, message *Message)
 }
 

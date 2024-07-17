@@ -6,17 +6,17 @@ type (
 	Pointer uint32
 
 	Element[T any] struct {
-		prev, addr, next Pointer
+		prev, addr, next Pointer // Deque.elements 中的索引
 		value            T
 	}
 
 	// Deque 可以不使用New函数, 声明为值类型自动初始化
 	Deque[T any] struct {
-		head, tail Pointer        // 头尾指针
+		head, tail Pointer        // 头尾指针，存储的是elements中的索引。
 		length     int            // 长度
-		stack      Stack[Pointer] // 回收站
-		elements   []Element[T]   // 元素列表
-		template   Element[T]     // 空值模板
+		stack      Stack[Pointer] // 回收站，elements切片中的索引构成的切片。这些索引对应的元素没有被占用。
+		elements   []Element[T]   // 元素列表，当元素列表为空时，stack肯定也为空。
+		template   Element[T]     // 空值模板，值复制。当没有空隙element时append此字段值。
 	}
 )
 

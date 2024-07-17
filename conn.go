@@ -13,20 +13,23 @@ import (
 )
 
 type Conn struct {
-	mu                sync.Mutex        // 写锁
-	ss                SessionStorage    // 会话
-	err               atomic.Value      // 错误
-	isServer          bool              // 是否为服务器
-	subprotocol       string            // 子协议
-	conn              net.Conn          // 底层连接
-	config            *Config           // 配置
+	mu sync.Mutex // 写锁
+	// 缺省值为此函数返回值：func newSmap() *smap { return &smap{data: make(map[string]any)} }
+	ss       SessionStorage // 会话
+	err      atomic.Value   // 错误
+	isServer bool           // 是否为服务器
+	// 握手时设置
+	subprotocol string   // 子协议
+	conn        net.Conn // 底层连接
+	config      *Config  // 配置
+	// 默认4096
 	br                *bufio.Reader     // 读缓存
 	continuationFrame continuationFrame // 连续帧
 	fh                frameHeader       // 帧头
 	handler           Event             // 事件处理器
-	closed            uint32            // 是否关闭
-	readQueue         channel           // 消息处理队列
-	writeQueue        workerQueue       // 发送队列
+	closed            uint32            // 是否关闭, 原子性关闭会话
+	readQueue         channel           // 消息处理队列，OnMessage方法并发数控制器，默认为并发为8
+	writeQueue        workerQueue       // 发送队列，异步Write发送的消息帧和广播消息会进入此队列， 每个连接最多同时只有一个worker再处理这个队列中的任务
 	deflater          *deflater         // 压缩编码器
 	dpsWindow         slideWindow       // 解压器滑动窗口
 	cpsWindow         slideWindow       // 压缩器滑动窗口
@@ -44,6 +47,17 @@ func (c *Conn) ReadLoop() {
 			break
 		}
 	}
+	// 当执行write操作发生错误时，会向对端发送关闭帧并关闭底层net.Conn。
+	// 还会将引起关闭的err存存储到Conn的err字段中。
+	//
+	// 上面的Read循环会因为从关闭的tcp链接中读取消息而返回。
+	// 因为Conn的closed字段原子保护，err字段要么是Read操作存储的，要么是Write操作存储的
+	// 不会产生覆盖。无论谁存储的err都会被用来调用OnClose方法。
+	//
+	// 所以Write不会主动调用OnClose方法也不会主动回收资源，靠的时Read操作观察到Write操作关闭
+	// 底层连接产生的错误触发的。
+	//
+	// 未发现err是中存储的不是error类型的情景
 	err, ok := c.err.Load().(error)
 	c.handler.OnClose(c, internal.SelectValue(ok, err, errEmpty))
 
@@ -103,6 +117,7 @@ func (c *Conn) close(reason []byte, err error) {
 	_ = c.conn.Close()
 }
 
+// 仅由Write类方法和ReadLoop中的readMessage方法所调用
 func (c *Conn) emitError(err error) {
 	if err == nil {
 		return
@@ -131,6 +146,7 @@ func (c *Conn) emitError(err error) {
 	}
 }
 
+// 仅由readControl方法所调用
 func (c *Conn) emitClose(buf *bytes.Buffer) error {
 	var responseCode = internal.CloseNormalClosure
 	var realCode = internal.CloseNormalClosure.Uint16()

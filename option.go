@@ -33,40 +33,71 @@ type (
 	PermessageDeflate struct {
 		// 是否开启压缩
 		// Whether to turn on compression
+		// serverPD.Enabled && strings.Contains(extensions, internal.PermessageDeflate)
+		// 客户端握手消息和服务端配置共同决定
 		Enabled bool
 
 		// 压缩级别
 		// Compress level
+		// defaultCompressLevel = 1
+		// 配置决定
 		Level int
 
 		// 压缩阈值, 长度小于阈值的消息不会被压缩, 仅适用于无上下文接管模式.
 		// Compression threshold, messages below the threshold will not be compressed, only for context-free takeover mode.
+		// defaultCompressThreshold 512
+		// 配置决定
 		Threshold int
 
 		// 压缩器内存池大小
 		// 数值越大竞争的概率越小, 但是会耗费大量内存
 		// Compressor memory pool size
 		// The higher the value the lower the probability of competition, but it will consume a lot of memory
+		//
+		// 缺省值为32
+		// 配置决定
 		PoolSize int
 
 		// 服务端上下文接管
 		// Server side context takeover
+		// 缺省值为false
+		//
+		// clientPD.ServerContextTakeover && serverPD.ServerContextTakeover
+		// 服务端：客户端握手消息和服务端配置共同决定
+		// 客户端：客户端配置后，根据服务端的响应决定是否开启，即相信服务端会根据客户端的请求头
+		// 做出正确的响应头
 		ServerContextTakeover bool
 
 		// 客户端上下文接管
 		// Client side context takeover
+		// 缺省值为false
+		//
+		// clientPD.ClientContextTakeover && serverPD.ClientContextTakeover,
+		// 服务端：客户端握手消息和服务端配置共同决定
+		// 客户端：客户端配置后，根据服务端的响应决定是否开启，即相信服务端会根据客户端的请求头
+		// 做出正确的响应头
 		ClientContextTakeover bool
 
 		// 服务端滑动窗口指数
 		// 取值范围 8<=n<=15, 表示pow(2,n)个字节
 		// The server-side sliding window index
 		// Range 8<=n<=15, means pow(2,n) bytes.
+		//
+		// ServerContextTakeover = true时, 默认12
+		// false时, 默认15
+		// 服务端：配置决定
+		// 客户端：尊重服务端响应头
 		ServerMaxWindowBits int
 
 		// 客户端滑动窗口指数
 		// 取值范围 8<=x<=15, 表示pow(2,n)个字节
 		// The client-side sliding window index
 		// Range 8<=n<=15, means pow(2,n) bytes.
+		//
+		// ClientContextTakeover = true时, 默认12
+		// false时，默认为15
+		// 服务端：配置决定
+		// 客户端：尊重服务端响应头
 		ClientMaxWindowBits int
 	}
 
@@ -82,22 +113,31 @@ type (
 
 		// 是否开启并行消息处理
 		// Whether to enable parallel message processing
+		// 开启OnMessage方法并发执行
+		// 缺省值为false
 		ParallelEnabled bool
 
 		// (单个连接)用于并行消息处理的协程数量限制
 		// Limit on the number of concurrent goroutine used for parallel message processing (single connection)
+		// 缺省值为8
+		// OnMessage方法并发执行的数量
 		ParallelGolimit int
 
 		// 最大读取的消息内容长度
+		// 超过此值直接返回 internal.CloseMessageTooLarge 错误
 		// Maximum read message content length
+		// 默认16MB
 		ReadMaxPayloadSize int
 
 		// 读缓冲区的大小
 		// Size of the read buffer
+		// defaultReadBufferSize
+		// 4096字节
 		ReadBufferSize int
 
 		// 最大写入的消息内容长度
 		// Maximum length of written message content
+		// 默认16MB
 		WriteMaxPayloadSize int
 
 		// 写缓冲区的大小, v1.4.5版本此参数被废弃
@@ -106,14 +146,19 @@ type (
 
 		// 是否检查文本utf8编码, 关闭性能会好点
 		// Whether to check the text utf8 encoding, turn off the performance will be better
+		// 默认为false
 		CheckUtf8Enabled bool
 
 		// 消息回调(OnMessage)的恢复程序
 		// Message callback (OnMessage) recovery program
+		// OnMessage方法返回后会调用此函数
+		//
+		// 缺省时为无操作函数func(logger Logger) {}
 		Recovery func(logger Logger)
 
 		// 日志工具
 		// Logging tools
+		// 缺省值为 stdLogger
 		Logger Logger
 	}
 
@@ -138,6 +183,7 @@ type (
 		TlsConfig *tls.Config
 
 		// 握手超时时间
+		// 默认为5s
 		HandshakeTimeout time.Duration
 
 		// WebSocket子协议, 握手失败会断开连接
@@ -151,12 +197,12 @@ type (
 
 		// 鉴权
 		// Authentication of requests for connection establishment
-		Authorize func(r *http.Request, session SessionStorage) bool
+		Authorize         func(r *http.Request, session SessionStorage) bool
 
 		// 创建session存储空间
 		// 用于自定义SessionStorage实现
 		// For custom SessionStorage implementations
-		NewSession func() SessionStorage
+		NewSession   func() SessionStorage
 	}
 )
 
@@ -279,14 +325,14 @@ type ClientOption struct {
 	WriteBufferSize int
 
 	PermessageDeflate   PermessageDeflate
-	ParallelEnabled     bool
-	ParallelGolimit     int
-	ReadMaxPayloadSize  int
-	ReadBufferSize      int
-	WriteMaxPayloadSize int
-	CheckUtf8Enabled    bool
-	Logger              Logger
-	Recovery            func(logger Logger)
+	ParallelEnabled     bool                // false
+	ParallelGolimit     int                 // defaultParallelGolimit 8
+	ReadMaxPayloadSize  int                 // defaultReadMaxPayloadSize 16MB
+	ReadBufferSize      int                 // defaultReadBufferSize 4096
+	WriteMaxPayloadSize int                 // defaultWriteMaxPayloadSize 16MB
+	CheckUtf8Enabled    bool                // false
+	Logger              Logger              // defaultLogger
+	Recovery            func(logger Logger) // func(logger Logger) {}
 
 	// 连接地址, 例如 wss://example.com/connect
 	// server address, eg: wss://example.com/connect
@@ -314,6 +360,7 @@ type ClientOption struct {
 	// 创建session存储空间
 	// 用于自定义SessionStorage实现
 	// For custom SessionStorage implementations
+	// func() SessionStorage { return newSmap() }
 	NewSession func() SessionStorage
 }
 

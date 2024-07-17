@@ -207,6 +207,18 @@ type (
 	}
 )
 
+var (
+	defaultBrPool      *internal.Pool[*bufio.Reader]
+	defaultBrPoolOnce  sync.Once
+	defaultDswCswPools = [15 - 8 + 1]*internal.Pool[[]byte]{}
+)
+
+func init() {
+	for i := 8; i <= 15; i++ {
+		defaultDswCswPools[i-8] = getDswCswPool(i)
+	}
+}
+
 // 设置压缩阈值
 // 开启上下文接管时, 必须不论长短压缩全部消息, 否则浏览器会报错
 // when context takeover is enabled, all messages must be compressed regardless of length,
@@ -225,7 +237,15 @@ func (c *ServerOption) deleteProtectedHeaders() {
 	c.ResponseHeader.Del(internal.SecWebSocketProtocol.Key)
 }
 
+func getDswCswPool(n int) *internal.Pool[[]byte] {
+	windowSize := internal.BinaryPow(n)
+	return internal.NewPool(func() []byte {
+		return make([]byte, 0, windowSize)
+	})
+}
+
 func initServerOption(c *ServerOption) *ServerOption {
+
 	if c == nil {
 		c = new(ServerOption)
 	}
@@ -284,6 +304,11 @@ func initServerOption(c *ServerOption) *ServerOption {
 
 	c.deleteProtectedHeaders()
 
+	defaultBrPoolOnce.Do(func() {
+		defaultBrPool = internal.NewPool(func() *bufio.Reader {
+			return bufio.NewReaderSize(nil, c.ReadBufferSize)
+		})
+	})
 	c.config = &Config{
 		ParallelEnabled:     c.ParallelEnabled,
 		ParallelGolimit:     c.ParallelGolimit,
@@ -294,23 +319,15 @@ func initServerOption(c *ServerOption) *ServerOption {
 		CheckUtf8Enabled:    c.CheckUtf8Enabled,
 		Recovery:            c.Recovery,
 		Logger:              c.Logger,
-		brPool: internal.NewPool(func() *bufio.Reader {
-			return bufio.NewReaderSize(nil, c.ReadBufferSize)
-		}),
+		brPool:              defaultBrPool,
 	}
 
 	if c.PermessageDeflate.Enabled {
 		if c.PermessageDeflate.ServerContextTakeover {
-			windowSize := internal.BinaryPow(c.PermessageDeflate.ServerMaxWindowBits)
-			c.config.cswPool = internal.NewPool[[]byte](func() []byte {
-				return make([]byte, 0, windowSize)
-			})
+			c.config.cswPool = defaultDswCswPools[c.PermessageDeflate.ServerMaxWindowBits-8]
 		}
 		if c.PermessageDeflate.ClientContextTakeover {
-			windowSize := internal.BinaryPow(c.PermessageDeflate.ClientMaxWindowBits)
-			c.config.dswPool = internal.NewPool[[]byte](func() []byte {
-				return make([]byte, 0, windowSize)
-			})
+			c.config.dswPool = defaultDswCswPools[c.PermessageDeflate.ClientMaxWindowBits-8]
 		}
 	}
 

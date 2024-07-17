@@ -3,8 +3,10 @@ package gws
 import (
 	"bufio"
 	"crypto/tls"
+	"github.com/newacorn/fasthttp"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/klauspost/compress/flate"
@@ -198,6 +200,7 @@ type (
 		// 鉴权
 		// Authentication of requests for connection establishment
 		Authorize         func(r *http.Request, session SessionStorage) bool
+		AuthorizeFastHttp func(ctx *fasthttp.RequestCtx, session SessionStorage) bool
 
 		// 创建session存储空间
 		// 用于自定义SessionStorage实现
@@ -266,6 +269,9 @@ func initServerOption(c *ServerOption) *ServerOption {
 	}
 	if c.Authorize == nil {
 		c.Authorize = func(r *http.Request, session SessionStorage) bool { return true }
+	}
+	if c.AuthorizeFastHttp == nil {
+		c.AuthorizeFastHttp = func(ctx *fasthttp.RequestCtx, session SessionStorage) bool { return true }
 	}
 	if c.NewSession == nil {
 		c.NewSession = func() SessionStorage { return newSmap() }

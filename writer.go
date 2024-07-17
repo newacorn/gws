@@ -16,9 +16,9 @@ import (
 // If you don't have any special needs, we recommend code=1000, reason=nil
 // https://developer.mozilla.org/zh-CN/docs/Web/API/CloseEvent#status_codes
 func (c *Conn) WriteClose(code uint16, reason []byte) {
-	var err = internal.NewError(internal.StatusCode(code), errEmpty)
+	var err = internal.NewError(internal.StatusCode(code), emitCloseErrorEmpty)
 	if len(reason) > 0 {
-		err.Err = errors.New(string(reason))
+		err.Err = EmitCloseError(string(reason))
 	}
 	c.emitError(err)
 }

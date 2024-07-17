@@ -36,12 +36,18 @@ type CloseError struct {
 	Reason []byte
 }
 
+type EmitCloseError string
+
+func (e EmitCloseError) Error() string {
+	return string(e)
+}
+
 func (c *CloseError) Error() string {
 	return fmt.Sprintf("gws: connection closed, code=%d, reason=%s", c.Code, string(c.Reason))
 }
 
 var (
-	errEmpty = errors.New("")
+	emitCloseErrorEmpty = EmitCloseError("")
 	errEmpty            = errors.New("")
 
 	// ErrUnauthorized 未通过鉴权认证

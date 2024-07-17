@@ -143,9 +143,16 @@ func (c *Conn) isTextValid(opcode Opcode, payload []byte) bool {
 
 func (c *Conn) isClosed() bool { return atomic.LoadUint32(&c.closed) == 1 }
 
+//goland:noinspection GoTypeAssertionOnErrors
 func (c *Conn) close(reason []byte, err error) {
 	c.err.Store(err)
-	_ = c.doWrite(OpcodeCloseConnection, internal.Bytes(reason))
+	switch err.(type) {
+	case EmitCloseError:
+		_ = c.doWrite(OpcodeCloseConnection, internal.Bytes(reason))
+	case *CloseError:
+		_ = c.doWrite(OpcodeCloseConnection, internal.Bytes(reason))
+	}
+	//_ = c.doWrite(OpcodeCloseConnection, internal.Bytes(reason))
 	_ = c.conn.Close()
 }
 

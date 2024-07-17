@@ -2,7 +2,6 @@ package gws
 
 import (
 	"bytes"
-	"errors"
 	"math"
 	"sync"
 	"sync/atomic"

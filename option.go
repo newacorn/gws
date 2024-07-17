@@ -203,6 +203,7 @@ type (
 		// 用于自定义SessionStorage实现
 		// For custom SessionStorage implementations
 		NewSession   func() SessionStorage
+		PingInterval time.Duration
 	}
 )
 

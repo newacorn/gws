@@ -34,6 +34,35 @@ type Conn struct {
 	dpsWindow         slideWindow       // 解压器滑动窗口
 	cpsWindow         slideWindow       // 压缩器滑动窗口
 	pd                PermessageDeflate // 压缩拓展协商结果
+	pingControl       *pingControl
+}
+type pingControl struct {
+	stop   chan struct{}
+	ponged atomic.Bool
+	ticker *time.Ticker
+}
+
+func (p *pingControl) SetPonged() {
+	p.ponged.Store(true)
+}
+
+func (p *pingControl) start(s *Conn) {
+out:
+	for {
+		select {
+		case <-p.stop:
+			p.ticker.Stop()
+			break out
+		case <-p.ticker.C:
+			if !p.ponged.Load() {
+				p.ticker.Stop()
+				s.WriteClose(1000, nil)
+				break out
+			}
+			_ = s.WritePing(nil)
+			p.ponged.Store(false)
+		}
+	}
 }
 
 // ReadLoop 循环读取消息. 如果复用了HTTP Server, 建议开启goroutine, 阻塞会导致请求上下文无法被GC.
@@ -90,6 +119,9 @@ func (c *Conn) getCpsDict(isBroadcast bool) []byte {
 		return c.cpsWindow.dict
 	}
 	return nil
+}
+func (c *Conn) SetPonged() {
+	c.pingControl.SetPonged()
 }
 
 func (c *Conn) getDpsDict() []byte {

@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"io"
 	"net"
+	"sync"
 	"testing"
 
 	klauspost "github.com/klauspost/compress/flate"
@@ -209,6 +210,33 @@ func BenchmarkConcurrentMap_ReadWrite(b *testing.B) {
 				cm.Store(key, 1)
 			} else {
 				cm.Load(key)
+			}
+		}
+	})
+}
+
+func BenchmarkConcurrentMap_ReadWrite2(b *testing.B) {
+	const count = 1000000
+	s := sync.Map{}
+	//var cm = NewConcurrentMap[string, uint8](64)
+	var keys = make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		key := string(internal.AlphabetNumeric.Generate(16))
+		keys = append(keys, key)
+		s.Store(key, 1)
+		//cm.Store(key, 1)
+	}
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		var i = 0
+		for pb.Next() {
+			i++
+			var key = keys[i%count]
+			if i&15 == 0 {
+				s.Store(key, 1)
+			} else {
+				s.Load(key)
 			}
 		}
 	})
